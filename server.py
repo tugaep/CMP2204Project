@@ -54,9 +54,14 @@ while True:
             
             #print(f"Accepted new connection from {client_address[0]}:{client_address[1]} username:{user['data'].decode('utf-8')}")
             print(f"{client_address[0]}:{client_address[1]} {user['data'].decode('utf-8')} has joined the chat!")
-        
+            start = time.time()
+
         else:
             message = receive_message(notified_socket)
+            if (str(message) == "user"):
+                for x in len(client_list):
+                    print(client_list[x] + '\n')
+                
 
             if message is False:
                 print(f"Closed connection from {clients[notified_socket]['data'].decode('utf-8')}")
