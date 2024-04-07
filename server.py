@@ -58,9 +58,12 @@ while True:
 
         else:
             message = receive_message(notified_socket)
-            if (str(message) == "user"):
-                for x in len(client_list):
-                    print(client_list[x] + '\n')
+            if message is not False:
+                if message['data'].decode('utf-8') == "user":
+                    print("Users online:")
+                    for username in client_list:
+                        print(username)
+                    continue
                 
 
             if message is False:
