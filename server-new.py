@@ -23,7 +23,8 @@ def load_usernames():
 def save_usernames(usernames):
     try:
         with open('usernames.json', 'w') as f:
-            json.dump(usernames, f)
+            i = json.dump(usernames, f)
+            f.write(str(i))
     except Exception as e:
         print(f"Error saving usernames: {e}")
 
@@ -51,7 +52,8 @@ def handle_client(conn, addr):
 
     # Save the username to usernames.json
     with lock:
-        usernames[addr[0]] = username
+        
+
         save_usernames(usernames)
 
     try:
