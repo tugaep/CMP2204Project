@@ -4,7 +4,7 @@ import json
 import os
 import time
 HOST = '127.0.0.1'
-PORT = 2748
+PORT = 1234
 
 
 
@@ -14,11 +14,11 @@ def load_usernames():
             usernames = json.load(f)
             print("Usernames loaded successfully:", usernames)
     except FileNotFoundError:
-        usernames = {}
+        usernames = []
         print("Usernames file not found. Initializing with empty dictionary.")
     except json.JSONDecodeError as e:
         print("Error decoding JSON:", e)
-        usernames = {}
+        usernames = []
     return usernames
 def save_usernames(usernames):
     try:
@@ -48,12 +48,12 @@ def handle_client(conn, addr):
     conn.send("Enter your username: ".encode())
     username = conn.recv(1024).decode().strip()
     broadcast(f"{username} has joined the chat.")
-    print(f"{username} has joined the chat.")
 
     # Save the username to usernames.json
     with lock:
         
-
+        load_usernames()
+        usernames.append(str(username))
         save_usernames(usernames)
 
     try:
