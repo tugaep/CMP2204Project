@@ -3,8 +3,9 @@ import threading
 import json
 import os
 import time
+
 HOST = '127.0.0.1'
-PORT = 1234
+PORT = 1111
 
 
 
@@ -45,9 +46,11 @@ def broadcast(message):
                 clients.remove(client)
 
 def handle_client(conn, addr):
+    
     conn.send("Enter your username: ".encode())
     username = conn.recv(1024).decode().strip()
     broadcast(f"{username} has joined the chat.")
+    start_time_username = time.time()
 
     # Save the username to usernames.json
     with lock:
@@ -58,18 +61,27 @@ def handle_client(conn, addr):
 
     try:
         while True:
+            end_time = time.time()
             message = conn.recv(1024).decode()
             t = time.localtime()
             current_time = time.strftime("%H:%M:%S", t)
+            if message:
+                start_time = time.time()
             if not message:
                 break  # Exit loop if client sends empty message (indicating disconnect)
             
             write_to_chat_history(username, message, current_time)  # Write to chat history file
             broadcast(f"{username} > {message}")
+            
+            if (start_time - end_time) > 8:
+                print("zazazazaza")
+                #offline yazacak
+
     except Exception as e:
         print(f"[EXCEPTION] {e}")
     finally:
         broadcast(f"{username} has left the chat.")
+        end_time_username = time.time() #15 dkninki
         with lock:
             clients.remove(conn)
         conn.close()
@@ -95,5 +107,6 @@ def start_server():
         thread = threading.Thread(target=handle_client, args=(conn, addr))
         thread.start()
         print(f"[ACTIVE CONNECTIONS] {threading.activeCount() - 1}")
+        
 
 start_server()
