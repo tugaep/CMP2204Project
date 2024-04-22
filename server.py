@@ -1,91 +1,116 @@
 import socket
-import select
+import threading
+import json
 import time
-HEADER_LENGTH = 10
-IP = "127.0.0.1"
-PORT =1234
 
-server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-server_socket.bind((IP, PORT))
-server_socket.listen()
+USER_FILE = "users.json"
 
-sockets_list = [server_socket]
+PORT = 5050
 
 clients = {}
+# Kullanıcılar ve online/offline durumu
+user_status = {}
 
-client_list = []
 
-def store_username(client_socket):
-    client_list.append(user['data'].decode('utf-8'))
-
-def del_username(client_socket):
-    client_list.remove(user['data'].decode('utf-8'))
-
-def receive_message(client_socket):
+def load_users():
     try:
-        message_header = client_socket.recv(HEADER_LENGTH)
-
-        if not len(message_header):
-            return False
-        
-        message_length = int(message_header.decode("utf-8").strip())
-        return {"header": message_header, "data": client_socket.recv(message_length)}
-    except:
-        return False
+        with open(USER_FILE, 'r') as file:
+            return json.load(file)
+    except FileNotFoundError:
+        return {}
 
 
-while True:
-    read_sockets, _, exception_sockets = select.select(sockets_list, [], sockets_list)
+def save_users():
+    with open(USER_FILE, 'w') as file:
+        json.dump(user_status, file)
 
-    for notified_socket in read_sockets:
-        if notified_socket == server_socket:
-            client_socket, client_address = server_socket.accept()
-
-            user = receive_message(client_socket)   
-            if user is False:
-                continue
-
-            sockets_list.append(client_socket)
-
-            clients[client_socket] = user
-            store_username(client_socket)
-            
-            #print(f"Accepted new connection from {client_address[0]}:{client_address[1]} username:{user['data'].decode('utf-8')}")
-            print(f"{client_address[0]}:{client_address[1]} {user['data'].decode('utf-8')} has joined the chat!")
-            start = time.time()
-
-        else:
-            message = receive_message(notified_socket)
-            if message is not False:
-                if message['data'].decode('utf-8') == "user":
-                    print("Users online:")
-                    for username in client_list:
-                        print(username)
-                    continue
-                
-
-            if message is False:
-                print(f"Closed connection from {clients[notified_socket]['data'].decode('utf-8')}")
-                sockets_list.remove(notified_socket)
-                del clients[notified_socket]
-                continue
-
-            user = clients[notified_socket]
-            
-            print(f"Received message from {user['data'].decode('utf-8')}: {message['data'].decode('utf-8')}")
-            start = time.time()
+# Bağlı olan kullanıcıların sürekli izlenmesi
+def check_user_activity():
+    while True:
+        for user, status in user_status.items():
+            if status == "online":
+                # Check if client sent a message in the last 15 seconds
+                if time.time() - clients[user]["last_activity"] > 15:
+                    user_status[user] = "offline"
+        save_users()
+        time.sleep(5)  # Check every 5 seconds
 
 
-            for client_socket in clients:
-                if client_socket != notified_socket:
-                    client_socket.send(user['header'] + user['data'] + message['header'] + message['data'])
-        end = time.time()
-        if ((end - start) > 900000):
-            del_username(client_socket)
+def handle_client(client_socket, username):
+    clients[username] = {"socket": client_socket, "last_activity": time.time()}
+    user_status[username] = "online"
+    save_users()
+    print(f"{username} connected to the server")
 
+    while True:
+        try:
+            message = client_socket.recv(1024).decode()
 
-    for notified_socket in exception_sockets:
-        sockets_list.remove(notified_socket)
-        del clients[notified_socket]
+            if message == "/users":
+                send_users_list(client_socket)                
+            else:
+                # Update last activity time
+                clients[username]["last_activity"] = time.time()
+                # Mesajı diğer istemcilere gönderme
+                broadcast_message(username, message)
+                user_status[username] = "online"
+                save_users()
+        except ConnectionResetError:
+            user_status[username] = "offline"
+            save_users()
+            print(f"{username} disconnected")
+            del clients[username]
+            break
+
+# Tüm kullanıcı adlarını ve durumlarını gönderme
+def send_user_info(client_socket):
+    user_info = json.dumps(user_status)
+    client_socket.send(user_info.encode())
+
+# Tüm kullanıcı adlarını gönderme
+def send_usernames(client_socket):
+    usernames = "\n".join(user_status.keys())
+    client_socket.send(usernames.encode())
+
+# JSON dosyasındaki kullanıcıları ve durumlarını gönderme
+def send_users_list(client_socket):
+    users_list = json.dumps(user_status)
+    client_socket.send(users_list.encode())
+
+# Mesajı diğer istemcilere gönderme
+def broadcast_message(sender, message):
+    for username, client_data in clients.items():
+        if username != sender:
+            try:
+                client_socket = client_data["socket"]
+                client_socket.send(f"{sender}: {message}".encode())
+            except ConnectionResetError:
+                del clients[username]
+                user_status[username] = "offline"
+                save_users()
+                print(f"{username} disconnected")
+
+# Ana program akışı
+def main():
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.bind(('localhost', PORT))
+    server.listen()
+
+    print(f"Server is listening on localhost:{PORT}")
+
+    load_users()
+
+    # Kullanıcı aktivitelerini kontrol etmek için bir thread oluştur
+    activity_thread = threading.Thread(target=check_user_activity)
+    activity_thread.daemon = True
+    activity_thread.start()
+
+    while True:
+        client_socket, _ = server.accept()
+        username = client_socket.recv(1024).decode()
+        thread = threading.Thread(target=handle_client, args=(client_socket, username))
+        thread.start()
+
+if __name__ == "__main__":
+    main()
