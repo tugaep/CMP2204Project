@@ -5,7 +5,7 @@ import json
 
 
 SERVER = "localhost" 
-PORT = 5050
+PORT = 1234
 # Bağlanılacak sunucu adresi
 ADDRESS = (SERVER, PORT)
 

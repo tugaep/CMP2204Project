@@ -6,7 +6,7 @@ import time
 
 USER_FILE = "users.json"
 
-PORT = 5050
+PORT = 1234
 
 clients = {}
 # Kullanıcılar ve online/offline durumu
@@ -16,9 +16,11 @@ user_status = {}
 def load_users():
     try:
         with open(USER_FILE, 'r') as file:
-            return json.load(file)
+            data = json.load(file)
+            return data
     except FileNotFoundError:
-        return {}
+        data = {}
+        return data
 
 
 def save_users():
@@ -35,6 +37,24 @@ def check_user_activity():
                     user_status[user] = "offline"
         save_users()
         time.sleep(5)  # Check every 5 seconds
+
+def check_user_available():
+    while True:
+        for user, status in user_status.items():
+            if status == "offline":
+                if time.time() - clients[user]["last_activity"] > 25:
+                    data = load_users()
+                    del data[user]
+                    del clients[user]
+                    print(f"{user} disconnected")
+                    
+                    
+        save_users()
+        time.sleep(5)
+
+
+
+
 
 
 def handle_client(client_socket, username):
@@ -85,7 +105,9 @@ def broadcast_message(sender, message):
             try:
                 client_socket = client_data["socket"]
                 client_socket.send(f"{sender}: {message}".encode())
+                print(message)
             except ConnectionResetError:
+                del users
                 del clients[username]
                 user_status[username] = "offline"
                 save_users()
@@ -98,13 +120,20 @@ def main():
     server.listen()
 
     print(f"Server is listening on localhost:{PORT}")
+    
 
     load_users()
-
+    
     # Kullanıcı aktivitelerini kontrol etmek için bir thread oluştur
     activity_thread = threading.Thread(target=check_user_activity)
     activity_thread.daemon = True
     activity_thread.start()
+
+    #Kullanıcı kickleme için thread
+    kick_thread = threading.Thread(target=check_user_available)
+    kick_thread.daemon = True
+    kick_thread.start()
+
 
     while True:
         client_socket, _ = server.accept()
