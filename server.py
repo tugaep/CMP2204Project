@@ -13,14 +13,20 @@ clients = {}
 user_status = {}
 
 
+def write_to_chat_history(username, message, current_time):
+    try:
+        with open('chat_history.txt', 'a') as history_file:
+            history_file.write(f"{username}> {message} - " + current_time + "\n") 
+    except Exception as e:
+        print(f"Error writing to chat history: {e}")
 def load_users():
     try:
         with open(USER_FILE, 'r') as file:
-            data = json.load(file)
-            return data
+            return json.load(file)
+            
     except FileNotFoundError:
-        data = {}
-        return data
+        return {}
+        
 
 
 def save_users():
@@ -43,6 +49,8 @@ def check_user_available():
         for user, status in user_status.items():
             if status == "offline":
                 if time.time() - clients[user]["last_activity"] > 25:
+
+                    #JSON dosyasından user key'i silinecek.
                     data = load_users()
                     del data[user]
                     del clients[user]
@@ -68,12 +76,16 @@ def handle_client(client_socket, username):
             message = client_socket.recv(1024).decode()
 
             if message == "/users":
-                send_users_list(client_socket)                
+                send_users_list(client_socket)   
+                         
             else:
                 # Update last activity time
                 clients[username]["last_activity"] = time.time()
                 # Mesajı diğer istemcilere gönderme
                 broadcast_message(username, message)
+                t = time.localtime()
+                current_time = time.strftime("%H:%M:%S", t)
+                write_to_chat_history(username, message, current_time)
                 user_status[username] = "online"
                 save_users()
         except ConnectionResetError:
@@ -122,7 +134,7 @@ def main():
     print(f"Server is listening on localhost:{PORT}")
     
 
-    load_users()
+    
     
     # Kullanıcı aktivitelerini kontrol etmek için bir thread oluştur
     activity_thread = threading.Thread(target=check_user_activity)
@@ -141,5 +153,5 @@ def main():
         thread = threading.Thread(target=handle_client, args=(client_socket, username))
         thread.start()
 
-if __name__ == "__main__":
-    main()
+
+main()
