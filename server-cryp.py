@@ -2,14 +2,9 @@ import socket
 import threading
 import json
 import time
-from Crypto.Cipher import AES
-from Crypto.Random import get_random_bytes
-from Crypto.Protocol.KDF import scrypt
-from Crypto.Random.random import randint
-from Crypto.Util.Padding import pad, unpad
 
 USER_FILE = "users.json"
-PORT = 1111
+PORT = 1234
 
 clients = {}
 user_status = {}
@@ -42,7 +37,7 @@ def read_chat_history():
 def check_user_activity():
     while True:
         for user, status in list(user_status.items()):
-            if status == "online" and time.time() - clients[user]["last_activity"] > 15:
+            if status == "online" and time.time() - clients[user]["last_activity"] > 45:
                 user_status[user] = "offline"
         save_users()
         time.sleep(5)
@@ -50,7 +45,7 @@ def check_user_activity():
 def check_user_available():
     while True:
         for user, status in list(user_status.items()):
-            if status == "offline" and user in clients and time.time() - clients[user]["last_activity"] > 25:
+            if status == "offline" and user in clients and time.time() - clients[user]["last_activity"] > 60:
                 del clients[user]
                 del user_status[user]
                 print(f"{user} disconnected")
@@ -66,6 +61,8 @@ def handle_client(client_socket, username):
     try:
         while True:
             message = client_socket.recv(1024).decode()
+            if not message:
+                break
             if message == "/users":
                 send_users_list(client_socket)
             elif message == "/history":
@@ -76,11 +73,6 @@ def handle_client(client_socket, username):
                 accept_private_chat(client_socket, username, message)
             elif message.startswith("/reject"):
                 reject_private_chat(client_socket, username, message)
-            elif message.startswith("ENCRYPTED"):
-                parts = message.split(" ", 2)
-                target_user = parts[1]
-                encrypted_msg = parts[2]
-                send_encrypted_message(target_user, encrypted_msg)
             else:
                 clients[username]["last_activity"] = time.time()
                 broadcast_message(username, message)
@@ -139,42 +131,7 @@ def accept_private_chat(client_socket, username, message):
     client_socket.send("Private chat accepted.".encode())
     target_socket.send("Private chat accepted.".encode())
 
-    # Perform Diffie-Hellman key exchange
-    p = 23
-    g = 5
-    a = randint(1, p-1)
-    A = pow(g, a, p)
-    client_socket.send(f"DH {p} {g} {A}".encode())
-
-    B_message = target_socket.recv(1024).decode().split()
-    if len(B_message) < 4:
-        client_socket.send("Error during Diffie-Hellman key exchange.".encode())
-        target_socket.send("Error during Diffie-Hellman key exchange.".encode())
-        return
-
-    B = int(B_message[3])
-    shared_key_client = pow(B, a, p)
-
-    b = randint(1, p-1)
-    B = pow(g, b, p)
-    target_socket.send(f"DH {p} {g} {B}".encode())
-
-    A_message = target_socket.recv(1024).decode().split()
-    if len(A_message) < 4:
-        client_socket.send("Error during Diffie-Hellman key exchange.".encode())
-        target_socket.send("Error during Diffie-Hellman key exchange.".encode())
-        return
-
-    A = int(A_message[3])
-    shared_key_target = pow(A, b, p)
-
-    key_client = scrypt(str(shared_key_client).encode(), salt=get_random_bytes(16), key_len=32, N=2**14, r=8, p=1)
-    key_target = scrypt(str(shared_key_target).encode(), salt=get_random_bytes(16), key_len=32, N=2**14, r=8, p=1)
-
-    clients[username]["key"] = key_client
-    clients[target_user]["key"] = key_target
-
-    private_chat_session(client_socket, target_socket, key_client, key_target)
+    private_chat_session(client_socket, target_socket, username, target_user)
 
 def reject_private_chat(client_socket, username, message):
     parts = message.split()
@@ -189,55 +146,27 @@ def reject_private_chat(client_socket, username, message):
     client_socket.send("Private chat rejected.".encode())
     target_socket.send("Private chat rejected.".encode())
 
-def private_chat_session(client_socket, target_socket, key_client, key_target):
-    def send_encrypted(socket, key, message):
-        cipher = AES.new(key, AES.MODE_EAX)
-        ciphertext, tag = cipher.encrypt_and_digest(pad(message.encode(), AES.block_size))
-        socket.send(cipher.nonce + tag + ciphertext)
-
-    def receive_decrypted(socket, key):
-        data = socket.recv(1024)
-        nonce = data[:16]
-        tag = data[16:32]
-        ciphertext = data[32:]
-        cipher = AES.new(key, AES.MODE_EAX, nonce=nonce)
-        message = unpad(cipher.decrypt_and_verify(ciphertext, tag), AES.block_size)
-        return message.decode()
-
+def private_chat_session(client_socket, target_socket, client_username, target_username):
     client_socket.send("Private chat session started. Type /end to finish.".encode())
     target_socket.send("Private chat session started. Type /end to finish.".encode())
 
-    while True:
-        try:
-            message_client = receive_decrypted(client_socket, key_client)
-            print(f"Received encrypted message from client: {message_client}")
-            if message_client == "/end":
-                client_socket.send("Private chat session ended.".encode())
-                target_socket.send("Private chat session ended.".encode())
+    def handle_private_messages(sender_socket, recipient_socket, sender_name):
+        while True:
+            try:
+                message = sender_socket.recv(1024).decode()
+                if not message:
+                    break
+                if message == "/end":
+                    sender_socket.send("Private chat session ended.".encode())
+                    recipient_socket.send("Private chat session ended.".encode())
+                    break
+                recipient_socket.send(f"Private from {sender_name}: {message}".encode())
+            except Exception as e:
+                print(f"Error in private chat session: {e}")
                 break
-            send_encrypted(target_socket, key_target, message_client)
-            print(f"Sent encrypted message to target: {message_client}")
 
-            message_target = receive_decrypted(target_socket, key_target)
-            print(f"Received encrypted message from target: {message_target}")
-            if message_target == "/end":
-                client_socket.send("Private chat session ended.".encode())
-                target_socket.send("Private chat session ended.".encode())
-                break
-            send_encrypted(client_socket, key_client, message_target)
-            print(f"Sent encrypted message to client: {message_target}")
-        except Exception as e:
-            print(f"Error in private chat session: {e}")
-            break
-
-def send_encrypted_message(target_user, encrypted_message):
-    if target_user in clients:
-        target_socket = clients[target_user]["socket"]
-        try:
-            target_socket.send(f"ENCRYPTED {encrypted_message}".encode())
-            print(f"Sent encrypted message to {target_user}: {encrypted_message}")
-        except Exception as e:
-            print(f"Error sending encrypted message to {target_user}: {e}")
+    threading.Thread(target=handle_private_messages, args=(client_socket, target_socket, client_username)).start()
+    threading.Thread(target=handle_private_messages, args=(target_socket, client_socket, target_username)).start()
 
 def main():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -254,7 +183,7 @@ def main():
     kick_thread.start()
 
     while True:
-        client_socket, client_address = server.accept()  # Corrected unpacking
+        client_socket, client_address = server.accept()
         username = client_socket.recv(1024).decode()
         thread = threading.Thread(target=handle_client, args=(client_socket, username))
         thread.start()
