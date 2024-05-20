@@ -28,12 +28,7 @@ def receive_messages():
 def send_messages():
     while True:
         message = input()
-        if message == "/users" or message == "/history" or message.startswith("/private") or message.startswith("/accept") or message.startswith("/reject"):
-            client.send(message.encode())
-        elif message == "/end":
-            client.send(message.encode())
-        else:
-            client.send(message.encode())
+        client.send(message.encode())
 
 def main():
     receive_thread = threading.Thread(target=receive_messages)

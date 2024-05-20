@@ -53,7 +53,7 @@ def check_user_available():
         time.sleep(5)
 
 def handle_client(client_socket, username):
-    clients[username] = {"socket": client_socket, "last_activity": time.time()}
+    clients[username] = {"socket": client_socket, "last_activity": time.time(), "private_with": None}
     user_status[username] = "online"
     save_users()
     print(f"{username} connected to the server")
@@ -63,23 +63,29 @@ def handle_client(client_socket, username):
             message = client_socket.recv(1024).decode()
             if not message:
                 break
-            if message == "/users":
-                send_users_list(client_socket)
-            elif message == "/history":
-                send_chat_history(client_socket)
-            elif message.startswith("/private"):
-                private_chat(client_socket, username, message)
-            elif message.startswith("/accept"):
-                accept_private_chat(client_socket, username, message)
-            elif message.startswith("/reject"):
-                reject_private_chat(client_socket, username, message)
+
+            if clients[username]["private_with"]:
+                # Handle private chat messages
+                handle_private_message(client_socket, username, message)
             else:
-                clients[username]["last_activity"] = time.time()
-                broadcast_message(username, message)
-                current_time = time.strftime("%H:%M:%S", time.localtime())
-                write_to_chat_history(username, message, current_time)
-                user_status[username] = "online"
-                save_users()
+                # Handle public chat commands and messages
+                if message == "/users":
+                    send_users_list(client_socket)
+                elif message == "/history":
+                    send_chat_history(client_socket)
+                elif message.startswith("/private"):
+                    private_chat(client_socket, username, message)
+                elif message.startswith("/accept"):
+                    accept_private_chat(client_socket, username, message)
+                elif message.startswith("/reject"):
+                    reject_private_chat(client_socket, username, message)
+                else:
+                    clients[username]["last_activity"] = time.time()
+                    broadcast_message(username, message)
+                    current_time = time.strftime("%H:%M:%S", time.localtime())
+                    write_to_chat_history(username, message, current_time)
+                    user_status[username] = "online"
+                    save_users()
     except (ConnectionResetError, KeyError):
         user_status[username] = "offline"
         save_users()
@@ -131,6 +137,9 @@ def accept_private_chat(client_socket, username, message):
     client_socket.send("Private chat accepted.".encode())
     target_socket.send("Private chat accepted.".encode())
 
+    clients[username]["private_with"] = target_user
+    clients[target_user]["private_with"] = username
+
     private_chat_session(client_socket, target_socket, username, target_user)
 
 def reject_private_chat(client_socket, username, message):
@@ -146,27 +155,21 @@ def reject_private_chat(client_socket, username, message):
     client_socket.send("Private chat rejected.".encode())
     target_socket.send("Private chat rejected.".encode())
 
+def handle_private_message(client_socket, username, message):
+    target_user = clients[username]["private_with"]
+    target_socket = clients[target_user]["socket"]
+
+    if message == "/end":
+        client_socket.send("Private chat session ended.".encode())
+        target_socket.send("Private chat session ended.".encode())
+        clients[username]["private_with"] = None
+        clients[target_user]["private_with"] = None
+    else:
+        target_socket.send(f"Private from {username}: {message}".encode())
+
 def private_chat_session(client_socket, target_socket, client_username, target_username):
     client_socket.send("Private chat session started. Type /end to finish.".encode())
     target_socket.send("Private chat session started. Type /end to finish.".encode())
-
-    def handle_private_messages(sender_socket, recipient_socket, sender_name):
-        while True:
-            try:
-                message = sender_socket.recv(1024).decode()
-                if not message:
-                    break
-                if message == "/end":
-                    sender_socket.send("Private chat session ended.".encode())
-                    recipient_socket.send("Private chat session ended.".encode())
-                    break
-                recipient_socket.send(f"Private from {sender_name}: {message}".encode())
-            except Exception as e:
-                print(f"Error in private chat session: {e}")
-                break
-
-    threading.Thread(target=handle_private_messages, args=(client_socket, target_socket, client_username)).start()
-    threading.Thread(target=handle_private_messages, args=(target_socket, client_socket, target_username)).start()
 
 def main():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

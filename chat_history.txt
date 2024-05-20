@@ -24,3 +24,14 @@ alp> sa - 04:14:07
 efe> sa - 04:16:16
 alp> asa - 04:16:18
 efe> sa - 04:16:22
+alp> as - 04:25:19
+efe> oha - 04:25:28
+alp> selam - 04:26:42
+alp> valla oldu - 04:26:55
+efe> oha - 04:27:18
+alp> selam - 04:28:51
+ece> lan - 04:28:59
+eren> selam - 04:36:43
+efe> sa - 04:36:52
+efe> of - 04:37:26
+ece> as - 04:39:42
