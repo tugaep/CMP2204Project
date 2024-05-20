@@ -9,12 +9,11 @@ from Crypto.Random.random import randint
 from Crypto.Util.Padding import pad, unpad
 
 USER_FILE = "users.json"
-PORT = 6000
+PORT = 1111
 
 clients = {}
 user_status = {}
 
-# Load or create the users file
 def load_users():
     try:
         with open(USER_FILE, 'r') as file:
@@ -139,6 +138,7 @@ def accept_private_chat(client_socket, username, message):
     target_socket = clients[target_user]["socket"]
     client_socket.send("Private chat accepted.".encode())
     target_socket.send("Private chat accepted.".encode())
+
     # Perform Diffie-Hellman key exchange
     p = 23
     g = 5
@@ -210,18 +210,22 @@ def private_chat_session(client_socket, target_socket, key_client, key_target):
     while True:
         try:
             message_client = receive_decrypted(client_socket, key_client)
+            print(f"Received encrypted message from client: {message_client}")
             if message_client == "/end":
                 client_socket.send("Private chat session ended.".encode())
                 target_socket.send("Private chat session ended.".encode())
                 break
             send_encrypted(target_socket, key_target, message_client)
+            print(f"Sent encrypted message to target: {message_client}")
 
             message_target = receive_decrypted(target_socket, key_target)
+            print(f"Received encrypted message from target: {message_target}")
             if message_target == "/end":
                 client_socket.send("Private chat session ended.".encode())
                 target_socket.send("Private chat session ended.".encode())
                 break
             send_encrypted(client_socket, key_client, message_target)
+            print(f"Sent encrypted message to client: {message_target}")
         except Exception as e:
             print(f"Error in private chat session: {e}")
             break
@@ -229,7 +233,11 @@ def private_chat_session(client_socket, target_socket, key_client, key_target):
 def send_encrypted_message(target_user, encrypted_message):
     if target_user in clients:
         target_socket = clients[target_user]["socket"]
-        target_socket.send(f"ENCRYPTED {encrypted_message}".encode())
+        try:
+            target_socket.send(f"ENCRYPTED {encrypted_message}".encode())
+            print(f"Sent encrypted message to {target_user}: {encrypted_message}")
+        except Exception as e:
+            print(f"Error sending encrypted message to {target_user}: {e}")
 
 def main():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -246,7 +254,7 @@ def main():
     kick_thread.start()
 
     while True:
-        client_socket, _ = server.accept()
+        client_socket, client_address = server.accept()  # Corrected unpacking
         username = client_socket.recv(1024).decode()
         thread = threading.Thread(target=handle_client, args=(client_socket, username))
         thread.start()

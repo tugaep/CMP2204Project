@@ -7,7 +7,7 @@ from Crypto.Random.random import randint
 from Crypto.Util.Padding import pad, unpad
 
 SERVER = "localhost"
-PORT = 6000
+PORT = 1111
 ADDRESS = (SERVER, PORT)
 
 client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -36,6 +36,8 @@ def receive_messages():
         except ConnectionResetError:
             print("Server closed the connection.")
             break
+        except Exception as e:
+            print(f"Error receiving message: {e}")
 
 def send_messages():
     global shared_key
@@ -62,17 +64,20 @@ def send_messages():
 
 def handle_diffie_hellman(message):
     global shared_key
-    parts = message.split()
-    p = int(parts[1])
-    g = int(parts[2])
-    A = int(parts[3])
-    b = randint(1, p-1)
-    B = pow(g, b, p)
-    client.send(f"DH {p} {g} {B}".encode())
-    shared_key = pow(A, b, p)
-    key = scrypt(str(shared_key).encode(), salt=get_random_bytes(16), key_len=32, N=2**14, r=8, p=1)
-    shared_key = key
-    print("Shared key established.")
+    try:
+        parts = message.split()
+        p = int(parts[1])
+        g = int(parts[2])
+        A = int(parts[3])
+        b = randint(1, p-1)
+        B = pow(g, b, p)
+        client.send(f"DH {p} {g} {B}".encode())
+        shared_key = pow(A, b, p)
+        key = scrypt(str(shared_key).encode(), salt=get_random_bytes(16), key_len=32, N=2**14, r=8, p=1)
+        shared_key = key
+        print("Shared key established.")
+    except Exception as e:
+        print(f"Error during Diffie-Hellman key exchange: {e}")
 
 def encrypt_message(message):
     cipher = AES.new(shared_key, AES.MODE_EAX)
@@ -80,13 +85,17 @@ def encrypt_message(message):
     return (cipher.nonce + tag + ciphertext).hex()
 
 def decrypt_message(message):
-    data = bytes.fromhex(message)
-    nonce = data[:16]
-    tag = data[16:32]
-    ciphertext = data[32:]
-    cipher = AES.new(shared_key, AES.MODE_EAX, nonce=nonce)
-    plaintext = unpad(cipher.decrypt_and_verify(ciphertext, tag), AES.block_size)
-    return plaintext.decode()
+    try:
+        data = bytes.fromhex(message)
+        nonce = data[:16]
+        tag = data[16:32]
+        ciphertext = data[32:]
+        cipher = AES.new(shared_key, AES.MODE_EAX, nonce=nonce)
+        plaintext = unpad(cipher.decrypt_and_verify(ciphertext, tag), AES.block_size)
+        return plaintext.decode()
+    except Exception as e:
+        print(f"Error decrypting message: {e}")
+        return "Error decrypting message"
 
 def main():
     receive_thread = threading.Thread(target=receive_messages)
