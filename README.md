@@ -1,7 +1,7 @@
 # P2P Chat Project
 
 ## Description
-This project implements a simple chat application using Python sockets. It consists of a server (`server-cryp.py`) and a client (`client-cryp.py`) allowing users to communicate with each other in real-time.
+This project implements a simple chat application using Python sockets. It consists of a server (`server.py`) and a client (`client.py`) allowing users to communicate with each other in real-time.
 
 ## Features
 - Real-time messaging between clients.
@@ -25,7 +25,7 @@ This project implements a simple chat application using Python sockets. It consi
 3. Once the server is running, clients can connect to it.
 
 ### Client
-1. Run the client: `python clien.py`
+1. Run the client: `python client.py`
 2. The client will prompt you to enter your username.
 4. Once connected, you can start sending and receiving messages.
 
